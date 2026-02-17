@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="uk">
+<html lang="ru">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Підрахунок часу по статусах</title>
+  <title>Подсчёт времени по статусам</title>
   <style>
     :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     body { margin: 0; background: #0b0f17; color: #e8eefc; }
@@ -16,45 +16,34 @@
     textarea { width: 100%; min-height: 260px; resize: vertical; border-radius: 12px; border: 1px solid #2b3a5e; background: #0f1626; color: #e8eefc; padding: 10px; outline: none; }
     input, select { width: 100%; border-radius: 12px; border: 1px solid #2b3a5e; background: #0f1626; color: #e8eefc; padding: 10px; outline: none; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
     .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
     button { cursor: pointer; border-radius: 12px; border: 1px solid #2b3a5e; background: #1a2a4a; color: #e8eefc; padding: 10px 14px; font-weight: 600; }
     button:hover { filter: brightness(1.08); }
     .muted { color: #b9c6e6; font-size: 12px; }
     .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; border: 1px solid #2b3a5e; background: #0f1626; color: #cfe0ff; font-size: 12px; }
-    table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 12px; border: 1px solid #23304d; }
-    th, td { padding: 10px; border-bottom: 1px solid #23304d; vertical-align: top; }
+    table { width: 100%; border-collapse: collapse; border-radius: 12px; border: 1px solid #23304d; }
+    th, td { padding: 10px; border-bottom: 1px solid #23304d; }
     th { text-align: left; font-size: 12px; color: #b9c6e6; background: #0f1626; }
-    td { font-size: 13px; }
     tr:last-child td { border-bottom: none; }
     .kpi { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .kpi .box { border: 1px solid #23304d; background: #0f1626; border-radius: 12px; padding: 10px; }
     .kpi .val { font-size: 18px; font-weight: 800; }
     .kpi .cap { font-size: 12px; color: #b9c6e6; }
-    .warn { color: #ffdb8a; }
-    .err { color: #ff9aa9; }
-    .ok { color: #9dffb2; }
-    code { background:#0f1626; padding:2px 6px; border-radius:8px; border:1px solid #23304d; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Підрахунок часу по статусах (копіпаст із таблиці)</h1>
+    <h1>Подсчёт времени оператора по статусам</h1>
 
     <div class="grid">
       <div class="card">
-        <label>Встав дані (як у тебе: Id, Действие, Оператор, Заказ, Дата …)</label>
-        <textarea id="input" placeholder="Встав сюди копію з таблиці..."></textarea>
+        <label>Вставьте данные (Id, Действие, Оператор, Заказ, Дата)</label>
+        <textarea id="input" placeholder="Вставьте сюда данные из CRM..."></textarea>
 
         <div class="btns">
-          <button id="calcBtn">Порахувати</button>
-          <button id="demoBtn" type="button">Підставити демо</button>
-          <button id="clearBtn" type="button">Очистити</button>
+          <button id="calcBtn">Подсчитать</button>
+          <button id="clearBtn">Очистить</button>
         </div>
-
-        <p class="muted" style="margin-top:10px">
-          Порада: у VS Code зручно поставити розширення <code>Live Server</code> і відкрити <code>index.html</code>.
-        </p>
 
         <div id="messages" class="muted"></div>
       </div>
@@ -64,14 +53,14 @@
           <div>
             <label>Оператор</label>
             <select id="operatorSelect">
-              <option value="__ALL__">Всі</option>
+              <option value="__ALL__">Все</option>
             </select>
           </div>
           <div>
-            <label>Що вважати “статусом”</label>
+            <label>Что считать "статусом"</label>
             <select id="statusMode">
-              <option value="startsWithStatus">Тільки “Действие” що починається з “Статус”</option>
-              <option value="allActions">Усі “Действие” (і Открытие/Закрытие теж)</option>
+              <option value="startsWithStatus">Только строки "Статус"</option>
+              <option value="allActions">Все действия</option>
             </select>
           </div>
         </div>
@@ -80,39 +69,26 @@
 
         <div class="row">
           <div>
-            <label>Початок зміни (опціонально, YYYY-MM-DD HH:MM:SS)</label>
-            <input id="shiftStart" placeholder="наприклад 2026-02-13 09:00:00" />
+            <label>Начало смены (YYYY-MM-DD HH:MM:SS)</label>
+            <input id="shiftStart" placeholder="2026-02-13 09:00:00" />
           </div>
           <div>
-            <label>Кінець зміни (опціонально, YYYY-MM-DD HH:MM:SS)</label>
-            <input id="shiftEnd" placeholder="наприклад 2026-02-13 20:00:00" />
+            <label>Конец смены (YYYY-MM-DD HH:MM:SS)</label>
+            <input id="shiftEnd" placeholder="2026-02-13 20:00:00" />
           </div>
         </div>
-
-        <div style="height:10px"></div>
-
-        <label>
-          <input type="checkbox" id="dedupeSameTime" checked />
-          Якщо є кілька подій з однаковим часом — залишати тільки останню
-        </label>
 
         <div style="height:12px"></div>
 
         <div class="kpi">
           <div class="box">
             <div class="val" id="kpiTotal">—</div>
-            <div class="cap">Загальний час</div>
+            <div class="cap">Общее время</div>
           </div>
           <div class="box">
             <div class="val" id="kpiRows">—</div>
-            <div class="cap">Подій використано</div>
+            <div class="cap">Использовано записей</div>
           </div>
-        </div>
-
-        <div style="height:12px"></div>
-
-        <div class="muted">
-          Правило: час рахується “від події до наступної події”, і цей інтервал зараховується <b>поточному</b> статусу.
         </div>
       </div>
     </div>
@@ -121,13 +97,13 @@
 
     <div class="grid">
       <div class="card">
-        <h1 style="font-size:16px;margin:0 0 10px;">Підсумок по статусах</h1>
-        <div id="summaryWrap" class="muted">Поки немає даних.</div>
+        <h1 style="font-size:16px;">Итог по статусам</h1>
+        <div id="summaryWrap" class="muted">Нет данных.</div>
       </div>
 
       <div class="card">
-        <h1 style="font-size:16px;margin:0 0 10px;">Інтервали (для перевірки)</h1>
-        <div id="intervalsWrap" class="muted">Поки немає даних.</div>
+        <h1 style="font-size:16px;">Интервалы</h1>
+        <div id="intervalsWrap" class="muted">Нет данных.</div>
       </div>
     </div>
   </div>
