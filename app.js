@@ -61,6 +61,10 @@ function parsePasted(raw) {
  * - Если включён режим B:
  *   после события "Закрытие заказа" статус принудительно становится "Статус пост-обработка"
  *   и держится до следующего "Открытие заказа" (или до явной смены статуса).
+ *
+ * ДОП. ПРАВИЛО (как ты просила):
+ * - "Статус пост-обработка" засчитывается ТОЛЬКО внутри окна заказа:
+ *   между "Открытие заказа" -> "Закрытие заказа"
  */
 function calculate(rows, opts) {
   const { operator, startStr, endStr, minGapSec, acwModeB } = opts;
@@ -86,9 +90,17 @@ function calculate(rows, opts) {
   // B-mode flag: we are currently in inferred ACW until next open
   let inAcwUntilOpen = false;
 
-  // init status at/before windowStart
+  // NEW: are we inside an order session (Открытие -> Закрытие)?
+  let inOrder = false;
+
+  // init status & inOrder at/before windowStart
   for (let i = 0; i < r.length; i++) {
-    if (r[i].dt <= windowStart && isStatus(r[i].action)) currentStatus = r[i].action;
+    if (r[i].dt <= windowStart) {
+      const act0 = (r[i].action || "").trim();
+      if (isStatus(act0)) currentStatus = act0;
+      if (act0 === "Открытие заказа") inOrder = true;
+      if (act0 === "Закрытие заказа") inOrder = false;
+    }
     if (r[i].dt > windowStart) break;
   }
 
@@ -99,6 +111,10 @@ function calculate(rows, opts) {
     // --- update "state" at cur moment ---
     const act = (cur.action || "").trim();
 
+    // track order window
+    if (act === "Открытие заказа") inOrder = true;
+    if (act === "Закрытие заказа") inOrder = false;
+
     // explicit status always wins
     if (isStatus(act)) {
       currentStatus = act;
@@ -106,21 +122,13 @@ function calculate(rows, opts) {
     }
 
     if (acwModeB) {
-      if (act === "Закрытие заказа") {
-        currentStatus = "Статус пост-обработка";
-        inAcwUntilOpen = true;
-      }
-      if (act === "Открытие заказа" && inAcwUntilOpen) {
-        // stop inferred ACW; after opening, status will be whatever last explicit was
-        // if explicit status unknown, assume "в работе" (common default)
-        inAcwUntilOpen = false;
-        if (!currentStatus || currentStatus === "Статус пост-обработка") {
-          // keep as is; next interval will likely be set by next explicit status,
-          // but to avoid "нет статуса" we can assume work:
-          currentStatus = "Статус в работе";
-        }
-      }
-    }
+  // Новый смысл: после "Закрытие заказа" время до следующего "Открытие заказа"
+  // относится к "Статус в работе"
+  if (act === "Закрытие заказа") {
+    currentStatus = "Статус в работе";
+  }
+}
+
 
     // --- compute interval cur->next ---
     let a = cur.dt;
@@ -135,7 +143,14 @@ function calculate(rows, opts) {
     const ms = b - a;
     if (ms < minGapMs) continue;
 
-    const credited = Boolean(currentStatus);
+    // default: if we have a status -> count it
+    let credited = Boolean(currentStatus);
+
+    // IMPORTANT RULE:
+    // Post-processing counts ONLY inside Открытие -> Закрытие
+    if (currentStatus === "Статус пост-обработка" && !inOrder) {
+      credited = false;
+    }
 
     if (credited) {
       totals.set(currentStatus, (totals.get(currentStatus) || 0) + ms);

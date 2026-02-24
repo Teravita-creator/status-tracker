@@ -29,8 +29,8 @@
     .kpi .val { font-size: 18px; font-weight: 800; }
     .kpi .cap { font-size: 12px; color: #b9c6e6; }
     .note { margin-top: 10px; }
-    .chk { display:flex; gap:10px; align-items:center; padding:10px; border:1px solid #23304d; background:#0f1626; border-radius:12px; }
-    .chk input { width: 18px; height: 18px; }
+    .chk { display:flex; gap:10px; align-items:flex-start; padding:10px; border:1px solid #23304d; background:#0f1626; border-radius:12px; }
+    .chk input { width: 18px; height: 18px; margin-top: 2px; }
     code { background:#0f1626; padding:2px 6px; border-radius:8px; border:1px solid #23304d; }
   </style>
 </head>
@@ -51,8 +51,7 @@
         <div id="messages" class="muted note"></div>
 
         <div class="muted note">
-          Вариант B: если включено, то <b>Пост-обработка</b> считается как период
-          <code>Закрытие заказа → следующее Открытие заказа</code>.
+          Подсчёт идёт по интервалам между событиями в выбранном окне расчёта (смена).
         </div>
       </div>
 
@@ -75,8 +74,13 @@
         <div class="chk">
           <input id="acwModeB" type="checkbox" checked />
           <div>
-            <div style="font-weight:700;">Пост-обработка по закрытию → открытию (вариант B)</div>
-            <div class="muted">Интервалы между закрытием и следующим открытием будут относиться к “Статус пост-обработка”.</div>
+            <div style="font-weight:700;">
+              Вариант B: после закрытия относить время до следующего открытия к “Статус в работе”
+            </div>
+            <div class="muted">
+              Период <code>Закрытие заказа → следующее Открытие заказа</code> будет засчитан как
+              <b>“Статус в работе”</b>.
+            </div>
           </div>
         </div>
 
@@ -107,9 +111,8 @@
         </div>
 
         <div class="muted note">
-          Правило: считаем интервалы между всеми событиями. Если включён вариант B,
-          то период после <code>Закрытие заказа</code> до следующего <code>Открытие заказа</code>
-          относится к <b>Статус пост-обработка</b>.
+          Если статус не определён, интервал не засчитывается. В таблице “Интервалы” видно, какой статус применился
+          и был ли интервал учтён.
         </div>
       </div>
     </div>
