@@ -54,20 +54,15 @@ function parsePasted(raw) {
   return rows;
 }
 
-/**
- * Алгоритм (B):
- * - Интервалы считаются между всеми событиями.
- * - Базово “статус держится” на последнем "Статус ..."
- * - Если включён режим B:
- *   после события "Закрытие заказа" статус принудительно становится "Статус пост-обработка"
- *   и держится до следующего "Открытие заказа" (или до явной смены статуса).
- *
- * ДОП. ПРАВИЛО (как ты просила):
- * - "Статус пост-обработка" засчитывается ТОЛЬКО внутри окна заказа:
- *   между "Открытие заказа" -> "Закрытие заказа"
- */
 function calculate(rows, opts) {
-  const { operator, startStr, endStr, minGapSec, acwModeB } = opts;
+  const {
+    operator,
+    startStr,
+    endStr,
+    minGapSec,
+    gapWarnMin,
+    acwModeB
+  } = opts;
 
   let r = rows.slice();
   if (operator !== "__ALL__") r = r.filter(x => x.operator === operator);
@@ -82,18 +77,14 @@ function calculate(rows, opts) {
 
   const totals = new Map();
   const intervals = [];
+
   const minGapMs = Math.max(0, Number(minGapSec || 0)) * 1000;
+  const gapWarnMs = Math.max(0, Number(gapWarnMin || 0)) * 60 * 1000;
 
-  // last explicit status
   let currentStatus = null;
-
-  // B-mode flag: we are currently in inferred ACW until next open
-  let inAcwUntilOpen = false;
-
-  // NEW: are we inside an order session (Открытие -> Закрытие)?
   let inOrder = false;
 
-  // init status & inOrder at/before windowStart
+  // init state before window start
   for (let i = 0; i < r.length; i++) {
     if (r[i].dt <= windowStart) {
       const act0 = (r[i].action || "").trim();
@@ -108,33 +99,23 @@ function calculate(rows, opts) {
     const cur = r[i];
     const next = r[i + 1];
 
-    // --- update "state" at cur moment ---
     const act = (cur.action || "").trim();
 
-    // track order window
     if (act === "Открытие заказа") inOrder = true;
     if (act === "Закрытие заказа") inOrder = false;
 
-    // explicit status always wins
     if (isStatus(act)) {
       currentStatus = act;
-      inAcwUntilOpen = false; // explicit status ends inferred ACW
     }
 
-    if (acwModeB) {
-  // Новый смысл: после "Закрытие заказа" время до следующего "Открытие заказа"
-  // относится к "Статус в работе"
-  if (act === "Закрытие заказа") {
-    currentStatus = "Статус в работе";
-  }
-}
+    // Вариант B: после закрытия время идёт в "Статус в работе"
+    if (acwModeB && act === "Закрытие заказа") {
+      currentStatus = "Статус в работе";
+    }
 
-
-    // --- compute interval cur->next ---
     let a = cur.dt;
     let b = next.dt;
 
-    // clip to window
     if (b <= windowStart || a >= windowEnd) continue;
     if (a < windowStart) a = windowStart;
     if (b > windowEnd) b = windowEnd;
@@ -143,11 +124,9 @@ function calculate(rows, opts) {
     const ms = b - a;
     if (ms < minGapMs) continue;
 
-    // default: if we have a status -> count it
     let credited = Boolean(currentStatus);
 
-    // IMPORTANT RULE:
-    // Post-processing counts ONLY inside Открытие -> Закрытие
+    // Пост-обработка засчитывается только внутри заказа
     if (currentStatus === "Статус пост-обработка" && !inOrder) {
       credited = false;
     }
@@ -156,26 +135,38 @@ function calculate(rows, opts) {
       totals.set(currentStatus, (totals.get(currentStatus) || 0) + ms);
     }
 
+    const nextAct = (next.action || "").trim();
+
+    const warnBigGap =
+      gapWarnMs > 0 &&
+      currentStatus === "Статус в работе" &&
+      nextAct === "Открытие заказа" &&
+      ms >= gapWarnMs;
+
     intervals.push({
       from: a,
       to: b,
       event: act,
       status: currentStatus || "(нет статуса)",
       ms,
-      credited
+      credited,
+      warnBigGap
     });
   }
 
   return { totals, intervals, windowStart, windowEnd, used: r.length };
 }
 
+
 // ===== UI =====
+
 const input = document.getElementById("input");
 const calcBtn = document.getElementById("calcBtn");
 const clearBtn = document.getElementById("clearBtn");
 
 const operatorSelect = document.getElementById("operatorSelect");
 const minGapSecEl = document.getElementById("minGapSec");
+const gapWarnMinEl = document.getElementById("gapWarnMin");
 const shiftStart = document.getElementById("shiftStart");
 const shiftEnd = document.getElementById("shiftEnd");
 const acwModeBEl = document.getElementById("acwModeB");
@@ -238,16 +229,24 @@ function render(result) {
   intervalsWrap.innerHTML = `
     <table>
       <tr>
-        <th>От</th><th>До</th><th>Событие</th><th>Засчитанный статус</th><th>Длительность</th><th>Учтено</th>
+        <th>От</th>
+        <th>До</th>
+        <th>Событие</th>
+        <th>Засчитанный статус</th>
+        <th>Длительность</th>
+        <th>Учтено</th>
       </tr>
       ${
         result.intervals.map(i => `
-          <tr>
+          <tr class="${i.warnBigGap ? "warn" : ""}">
             <td>${escapeHtml(i.from.toLocaleString())}</td>
             <td>${escapeHtml(i.to.toLocaleString())}</td>
             <td>${escapeHtml(i.event)}</td>
             <td>${escapeHtml(i.status)}</td>
-            <td>${formatDuration(i.ms)}</td>
+            <td>
+              ${formatDuration(i.ms)}
+              ${i.warnBigGap ? ` <span class="badge-warn">⚠️ большой разрыв</span>` : ""}
+            </td>
             <td>${i.credited ? "да" : "нет"}</td>
           </tr>
         `).join("")
@@ -260,17 +259,12 @@ function run() {
   const rows = parsePasted(input.value || "");
   refreshOperators(rows);
 
-  if (!rows.length) {
-    setMessage("Не найдено строк с датой формата YYYY-MM-DD HH:MM:SS.");
-  } else {
-    setMessage("");
-  }
-
   const result = calculate(rows, {
     operator: operatorSelect.value,
     startStr: shiftStart.value.trim() || null,
     endStr: shiftEnd.value.trim() || null,
     minGapSec: minGapSecEl.value || 0,
+    gapWarnMin: gapWarnMinEl.value || 0,
     acwModeB: Boolean(acwModeBEl.checked)
   });
 
@@ -284,8 +278,8 @@ clearBtn.addEventListener("click", () => {
   shiftStart.value = "";
   shiftEnd.value = "";
   minGapSecEl.value = "0";
+  gapWarnMinEl.value = "30";
   acwModeBEl.checked = true;
-  setMessage("");
 
   kpiTotal.textContent = "—";
   kpiRows.textContent = "—";
